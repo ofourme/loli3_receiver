@@ -17,13 +17,17 @@
 /*////////////////////////////////////////////////////////////////////////////*/
 
 
-//默认跳频频点
-#define LOLI3_HOPPING_STARTUP		10,35,60,85,110
 #define LOLI3_CHANNEL_STARTUP   33
+//使用LOVE作为对频默认地址
+#define LOLI3_ADDRESS_STARTUP		'L','O','V','E','!'
+//默认跳频CHANNEL
+#define LOLI3_HOPPING_STARTUP		10,35,60,85,110
+
 #define LOLI3_CHANNEL_CONNECT   66
 
-//使用LOVE作为对频暗语
-#define LOLI3_ADDRESS_STARTUP	'L','O','V','E','!'
+#define LOLI3_NRF_DATA_LENGTH		11
+
+#define LOLI3_NUM_HOPPING				5
 
 /******************************************************************************/
 /*-DO NOT ADD YOUR CODE AFTER HERE!-*\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\-WIDTH: 80-*/

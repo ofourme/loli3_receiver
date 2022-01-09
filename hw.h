@@ -1,7 +1,7 @@
 /*
 ********************************************************************************
 *                             ---ofme---
-*           Copyleft (c) 2008-2021, 微风山谷/ofourme@163.com
+*           Copyleft (c) 2021, 微风山谷 / ofourme@163.com
 *           License: LGPL
 *
 *   HW.H-V1.0.0 (2021.Dec.5th)
@@ -18,11 +18,16 @@
 #include<reg52.h>
 #include<intrins.h>
 
+/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
+
 #define u8 unsigned char
 #define u16 unsigned int
 #define u32 unsigned long
-	
+#define word_t u8
+#define uint8_t u8
 #define boot bit
+
+/*////////////////////////////////////////////////////////////////////////////*/
 
 //15系列新增寄存器
 sfr IAP_DATA=0xc2;
@@ -49,7 +54,7 @@ sfr P3M0=0xb2;
 sfr P4M0=0xb4;
 sfr P1M1=0x91;
 
-sfr P_SW1 = 0xA2;             //外设功能切换寄存器1
+sfr P_SW1 = 0xA2;
 sfr CMOD=0xd9;
 sfr CCON=0xd8;
 sfr CCAPM0=0xda;
