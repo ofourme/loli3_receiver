@@ -1,0 +1,382 @@
+C51 COMPILER V9.59.0.0   LOLI3_RECV                                                        12/13/2023 00:12:42 PAGE 1   
+
+
+C51 COMPILER V9.59.0.0, COMPILATION OF MODULE LOLI3_RECV
+OBJECT MODULE PLACED IN .\Objects\loli3_recv.obj
+COMPILER INVOKED BY: C:\bin\Keil_v5\C51\BIN\C51.EXE ..\src\loli3_recv.c OPTIMIZE(8,SPEED) BROWSE INCDIR(..\port;..\src) 
+                    -DEBUG OBJECTEXTEND PRINT(.\Listings\loli3_recv.lst) TABS(2) OBJECT(.\Objects\loli3_recv.obj)
+
+line level    source
+
+   1          /*
+   2          ********************************************************************************
+   3          *                             ---ofme---
+   4          *           Copyleft (c) 2021-2023, 微风山谷 / ofourme@163.com
+   5          *           License: LGPL
+   6          *
+   7          *   LOLI3_RECV.C-V1.0.0 (2023.Sep.25th)
+   8          *
+   9          ********************************************************************************
+  10          */
+  11          
+  12          #define __LOLI3_RECV_C__
+  13          
+  14          /*-DO NOT ADD YOUR CODE BEFORE HERE!-*\\\\\\\\\\\\\\\\\\\\\\\\\\\\\-WIDTH: 80-*/
+  15          /******************************************************************************/
+  16          
+  17          #include "loli3_recv.h"
+  18          
+  19          /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
+  20          
+  21          
+  22          /*////////////////////////////////////////////////////////////////////////////*/
+  23          
+  24          #define MAGIC_RECV_SET  0xab
+  25          
+  26          void DATA_read()
+  27          {
+  28   1        u8 i;
+  29   1        u16 sum,sum_read;
+  30   1        u8* set;
+  31   1        
+  32   1        u8 xdata T[sizeof(Loli3RecvSet)];
+  33   1        
+  34   1        EEPROM_begin();
+  35   1        for(sum=i=0;i<sizeof(Loli3RecvSet);i++)
+  36   1        {
+  37   2          T[i]=EEPROM_read(i);
+  38   2          sum+=T[i];
+  39   2        }
+  40   1        sum_read=EEPROM_read(sizeof(Loli3RecvSet));//读校验和
+  41   1        sum_read<<=8;
+  42   1        sum_read+=EEPROM_read(sizeof(Loli3RecvSet)+1);
+  43   1        EEPROM_end();
+  44   1      
+  45   1        recvSet.isValid = 0;
+  46   1        if(T[0]!= MAGIC_RECV_SET || sum!=sum_read) return; //比较起始码和校验和
+  47   1        // 读取的数据完全没问题才写入recvSet，防止错误的数据覆盖recvSet默认数据
+  48   1        for(i=1,set=(u8*)&recvSet;i<sizeof(Loli3RecvSet);i++) set[i]=T[i];
+  49   1        recvSet.isValid = MAGIC_RECV_SET;
+  50   1        return;
+  51   1      }
+  52          
+  53          void DATA_save()
+  54          {
+C51 COMPILER V9.59.0.0   LOLI3_RECV                                                        12/13/2023 00:12:42 PAGE 2   
+
+  55   1        u8 i;
+  56   1        u16 sum;
+  57   1        u8* set;
+  58   1      
+  59   1        EEPROM_begin();
+  60   1        EEPROM_cleanPage(0);
+  61   1        recvSet.isValid = MAGIC_RECV_SET;
+  62   1        for(i=0,sum=0,set=(u8*)&recvSet;i<sizeof(Loli3RecvSet);i++)
+  63   1        {
+  64   2          EEPROM_write(i,*set);
+  65   2          sum+=*set++;
+  66   2        }
+  67   1        EEPROM_write(sizeof(Loli3RecvSet),sum>>8);
+  68   1        EEPROM_write(sizeof(Loli3RecvSet)+1,sum);
+  69   1      
+  70   1        EEPROM_end();
+  71   1      }
+  72          
+  73          #undef MAGIC_RECV_SET
+  74          
+  75          /*////////////////////////////////////////////////////////////////////////////*/
+  76          
+  77          void SBUS_data_push()
+  78          {
+  79   1        u8 i;
+  80   1        u8 buff[12];
+  81   1      
+  82   1        buff[1] =                (u8)(recv.CH_data[0])<<1;
+  83   1        buff[2] = (u8)(recv.CH_data[0]>>7)+(u8)(recv.CH_data[1])<<4;
+  84   1        buff[3] = (u8)(recv.CH_data[1]>>4)+(u8)(recv.CH_data[2])<<7;
+  85   1        buff[4] = (u8)(recv.CH_data[2]>>1);
+  86   1        buff[5] = (u8)(recv.CH_data[2]>>9)+(u8)(recv.CH_data[3])<<2;
+  87   1        buff[6] = (u8)(recv.CH_data[3]>>6)+(u8)(recv.CH_data[4])<<5;
+  88   1        buff[7] = (u8)(recv.CH_data[4]>>3)+(u8)(recv.CH_data[5])<<8;
+  89   1        buff[8] = (u8)(recv.CH_data[5]);
+  90   1        buff[9] = (u8)(recv.CH_data[5]>>8)+(u8)(recv.CH_data[6])<<3;
+  91   1        buff[10]= (u8)(recv.CH_data[6]>>5)+(u8)(recv.CH_data[7])<<6;
+  92   1        buff[11]= (u8)(recv.CH_data[7]>>2);
+  93   1      
+  94   1        recv.SBUS_tx[0]=0x0f; //Star
+  95   1        DATA_mutex_get();     //防止修改SBUS数据的时候，中断程序在端口输出错误数据
+  96   1        for(i=1 ; i<=11; i++) //CH1~CH8
+  97   1        {
+  98   2          recv.SBUS_tx[i]=buff[i];
+  99   2        }
+ 100   1        DATA_mutex_release();
+ 101   1        for(    ; i<=22; i++) //CH9~CH16
+ 102   1        {
+ 103   2          recv.SBUS_tx[i]=0;
+ 104   2        }
+ 105   1        recv.SBUS_tx[23]=0;   //flag
+ 106   1        recv.SBUS_tx[24]=0;   //End
+ 107   1      }
+ 108          
+ 109          /*////////////////////////////////////////////////////////////////////////////*/
+ 110          
+ 111          void callback_timer_signal_count(void)
+ 112          {
+ 113   1          recv.rx_num=nrf.rx_cnt;
+ 114   1          nrf.rx_cnt=0;
+ 115   1      }
+ 116          
+C51 COMPILER V9.59.0.0   LOLI3_RECV                                                        12/13/2023 00:12:42 PAGE 3   
+
+ 117          void callback_timer_signal_lost(void)
+ 118          {
+ 119   1        u8 i;
+ 120   1      
+ 121   1        DBG("LOLI3 recv signal lost!!!");
+ 122   1        recv.stateLED = STATE_LED_ON;
+ 123   1      
+ 124   1        DATA_mutex_get();
+ 125   1        for(i=0; i<8; i++)
+ 126   1        {
+ 127   2          recv.CH_data[i]=recvSet.out_control_data[i];
+ 128   2        }
+ 129   1        DATA_mutex_release();
+ 130   1      
+ 131   1        SBUS_data_push();
+ 132   1      }
+ 133          
+ 134          void callback_timer_data_save(void)
+ 135          {
+ 136   1        DATA_save();
+ 137   1        recv.stateLED = STATE_LED_FLASH;
+ 138   1      }
+ 139          
+ 140          void callback_timer_led_off(void)
+ 141          {
+ 142   1        recv.stateLED = STATE_LED_OFF;
+ 143   1      }
+ 144          
+ 145          void callback_timer_channel_lost(void)
+ 146          {
+ 147   1        static u8 index = 0;
+ 148   1      
+ 149   1        if( noRF() )
+ 150   1        {
+ 151   2          nrf.hopping_cnt++;
+ 152   2          if(nrf.hopping_cnt>LOLI3_NUM_HOPPING)
+ 153   2          {
+ 154   3            if(index>=   (sizeof(_random_hopping_index)/sizeof(_random_hopping_index[0])) ) index=0;
+ 155   3            nrf.channel_index =  _random_hopping_index[index++];
+ 156   3          }
+ 157   2          else
+ 158   2          {
+ 159   3            nrf.channel_index++;
+ 160   3            if(nrf.channel_index>=LOLI3_NUM_HOPPING)nrf.channel_index=0;
+ 161   3          }
+ 162   2          NRF_channel(recvSet.hopping[nrf.channel_index]);
+ 163   2        }
+ 164   1      }
+ 165          
+ 166          void callback_timer_adc(void)
+ 167          {
+ 168   1        static u8 i=0;
+ 169   1        u16 adc;
+ 170   1      
+ 171   1        adc = hw_adc_read();
+ 172   1        i++;
+ 173   1        if(i&0x01)
+ 174   1        {
+ 175   2          _adc_ic = adc + ((_adc_ic*7)>>3); //扩大8倍
+ 176   2          hw_adc_open(1);
+ 177   2        }
+ 178   1        else
+C51 COMPILER V9.59.0.0   LOLI3_RECV                                                        12/13/2023 00:12:42 PAGE 4   
+
+ 179   1        {
+ 180   2          _adc_batt = adc + ((_adc_batt*7)>>3); //扩大8倍
+ 181   2          hw_adc_open(0);
+ 182   2        }
+ 183   1      }
+ 184          
+ 185          void timers_init()
+ 186          {
+ 187   1        timer_init(timer, NUM_TIMERS);
+ 188   1      
+ 189   1        timer_cbRegist(TIMER_SIGNAL_COUNT,callback_timer_signal_count);
+ 190   1        timer_cbRegist(TIMER_SIGNAL_LOST, callback_timer_signal_lost);
+ 191   1        timer_cbRegist(TIMER_DATA_SAVE,   callback_timer_data_save);
+ 192   1        timer_cbRegist(TIMER_LED_OFF,     callback_timer_led_off);
+ 193   1        timer_cbRegist(TIMER_CHANNEL_LOST,callback_timer_channel_lost);
+ 194   1        timer_cbRegist(TIMER_ADC,         callback_timer_adc);
+ 195   1      }
+ 196          
+ 197          
+ 198          /*////////////////////////////////////////////////////////////////////////////*/
+ 199          #if 0
+              void recv_nrf_read(void)
+              {
+                NRF_FIFO_read(nrf.rx, LOLI3_NRF_DATA_LENGTH);
+              }
+              
+              void recv_nrf_write(void)
+              {
+                NRF_FIFO_write(nrf.tx,LOLI3_NRF_DATA_LENGTH);
+              }
+              #endif
+ 210          /*////////////////////////////////////////////////////////////////////////////*/
+ 211          
+ 212          void recv_connect()
+ 213          {
+ 214   1          NRF_channel(LOLI3_CHANNEL_CONNECT);
+ 215   1          NRF_addr_rx(recvSet.address);
+ 216   1          NRF_addr_tx(recvSet.address);
+ 217   1          NRF_power(3);
+ 218   1      }
+ 219          
+ 220          void recv_reconnect()
+ 221          {
+ 222   1        u8 i,t;
+ 223   1      
+ 224   1        NRF_channel(LOLI3_CHANNEL_STARTUP);
+ 225   1        NRF_addr_tx(recv_address_startup);
+ 226   1        NRF_addr_rx(recv_address_startup);
+ 227   1      
+ 228   1        do
+ 229   1        {
+ 230   2          while(noRF());
+ 231   2          NRF_FIFO_read(nrf.rx, LOLI3_NRF_DATA_LENGTH);
+ 232   2          NRF_irq_clean();
+ 233   2      
+ 234   2        } while(nrf.rx[0]!=0xa0);
+ 235   1      
+ 236   1      
+ 237   1        for(i=0,t=1; i<LOLI3_NUM_HOPPING; i++,t++)
+ 238   1        {
+ 239   2          recvSet.hopping[i]=nrf.rx[t];
+ 240   2        }
+C51 COMPILER V9.59.0.0   LOLI3_RECV                                                        12/13/2023 00:12:42 PAGE 5   
+
+ 241   1        for(i=0; i<5; i++,t++)
+ 242   1        {
+ 243   2          recvSet.address[i]=nrf.rx[t];
+ 244   2        }
+ 245   1        nrf.tx[0]='O',nrf.tx[1]='K';
+ 246   1      
+ 247   1        while(1)
+ 248   1        {
+ 249   2          NRF_mode_tx();
+ 250   2          NRF_channel(LOLI3_CHANNEL_STARTUP);
+ 251   2          NRF_addr_tx(recv_address_startup);
+ 252   2          NRF_addr_rx(recv_address_startup);
+ 253   2          NRF_FIFO_write(nrf.tx, LOLI3_NRF_DATA_LENGTH);
+ 254   2          hw_delay_1ms();
+ 255   2      
+ 256   2          NRF_mode_rx();
+ 257   2          NRF_channel(recvSet.hopping[0]);
+ 258   2          NRF_addr_tx(recvSet.address);
+ 259   2          NRF_addr_rx(recvSet.address);
+ 260   2          for(t=100; t--; )
+ 261   2          {
+ 262   3            hw_delay_1ms();
+ 263   3            if(noRF()==0) // 接收到信号
+ 264   3            {
+ 265   4              NRF_FIFO_read(nrf.rx, LOLI3_NRF_DATA_LENGTH);
+ 266   4              NRF_irq_clean();
+ 267   4              DATA_save();
+ 268   4              NRF_power(3);
+ 269   4              return;
+ 270   4            }
+ 271   3          }
+ 272   2        }
+ 273   1      }
+ 274          
+ 275          /*////////////////////////////////////////////////////////////////////////////*/
+ 276          
+ 277          void recv_init()
+ 278          {
+ 279   1        u8 restar = 0;
+ 280   1        u8 temp;
+ 281   1      
+ 282   1        hw_io_cho_init();
+ 283   1        hw_io_chi_init();
+ 284   1        hw_io_cho_clr();
+ 285   1        hw_delay_1ms();
+ 286   1        if(hw_io_chi_get()==0) //如果CH5与CH6被短接，重新对码
+ 287   1        {
+ 288   2          hw_io_cho_set();   // 插上舵机会拉低CH6电平。改变CH5电平，确认CH5与CH6短接。
+ 289   2          hw_delay_1ms();
+ 290   2          if(hw_io_chi_get())    LED_flash(20), restar=1;   //启动重新对码
+ 291   2        }
+ 292   1        hw_io_chs_pushpull();
+ 293   1      
+ 294   1        while(EEPROM_test())
+ 295   1        {
+ 296   2          LED_flash(3);
+ 297   2          DBG("EEPROM error!");
+ 298   2          delay(1000);
+ 299   2        }
+ 300   1        DATA_read();
+ 301   1      
+ 302   1        NRF_reset();  // 防止CPU复位但模块未断电复位导致的错误
+C51 COMPILER V9.59.0.0   LOLI3_RECV                                                        12/13/2023 00:12:42 PAGE 6   
+
+ 303   1        temp = NRF_test();
+ 304   1        while(temp)
+ 305   1        {
+ 306   2          LED_flash(10);
+ 307   2          DBG("NRF24L01 error!");
+ 308   2          DBG(Int16ToStr(temp));
+ 309   2          delay(1000);
+ 310   2          temp = NRF_test();
+ 311   2        }
+ 312   1        NRF_init();
+ 313   1      
+ 314   1        if(restar || recvSet.isValid==0)
+ 315   1        {
+ 316   2          DBG("LOLI3 recv reconnecting...");
+ 317   2          recv_reconnect();
+ 318   2        }
+ 319   1        else
+ 320   1        {
+ 321   2          DBG("LOLI3 recv connecting...");
+ 322   2          recv_connect();
+ 323   2        }
+ 324   1      
+ 325   1        if(recvSet.SBUS)      recv.stateOUTPUT = STATE_OUTPUT_SBUS;
+ 326   1        else if(recvSet.PPM)  recv.stateOUTPUT = STATE_OUTPUT_PPM;
+ 327   1        else
+ 328   1        {
+ 329   2          recv.stateOUTPUT = STATE_OUTPUT_SERVO;
+ 330   2          if(recvSet.CH1_PWM) hw_pwm_en(1);
+ 331   2          if(recvSet.CH2_PWM) hw_pwm_en(2);
+ 332   2        }
+ 333   1        recv.isOutputChanged = 1;
+ 334   1      
+ 335   1        recv.stateLED = STATE_LED_OFF;
+ 336   1        recv.stateNRF = STATE_NRF_INIT;
+ 337   1      }
+ 338          
+ 339          
+ 340          void recv_begin(void)
+ 341          {
+ 342   1        hw_output_en();
+ 343   1        hw_tick_en();
+ 344   1        INTERRUPT_en();
+ 345   1      }
+ 346          
+ 347          /******************************************************************************/
+ 348          /*-DO NOT ADD YOUR CODE AFTER HERE!-*\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\-WIDTH: 80-*/
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1299    ----
+   CONSTANT SIZE    =    105    ----
+   XDATA SIZE       =     65      40
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     60      30
+   IDATA SIZE       =     63    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

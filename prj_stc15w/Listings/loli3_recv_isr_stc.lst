@@ -1,0 +1,363 @@
+C51 COMPILER V9.59.0.0   LOLI3_RECV_ISR_STC                                                12/13/2023 00:12:42 PAGE 1   
+
+
+C51 COMPILER V9.59.0.0, COMPILATION OF MODULE LOLI3_RECV_ISR_STC
+OBJECT MODULE PLACED IN .\Objects\loli3_recv_isr_stc.obj
+COMPILER INVOKED BY: C:\bin\Keil_v5\C51\BIN\C51.EXE ..\port\loli3_recv_isr_stc.c OPTIMIZE(8,SPEED) BROWSE INCDIR(..\port
+                    -;..\src) DEBUG OBJECTEXTEND PRINT(.\Listings\loli3_recv_isr_stc.lst) TABS(2) OBJECT(.\Objects\loli3_recv_isr_stc.obj)
+
+line level    source
+
+   1          /*
+   2          ********************************************************************************
+   3          *                             ---ofme---
+   4          *           Copyleft (c) 2021-2023, 微风山谷 / ofourme@163.com
+   5          *           License: LGPL
+   6          *
+   7          *   LOLI3_RECV_ISR_STC.C-V1.0.0 (2023.Oct.25th)
+   8          *   硬件固定运行频率：12MHz
+   9          *
+  10          ********************************************************************************
+  11          */
+  12          
+  13          #define __LOLI3_RECV_ISR_STC_C__
+  14          
+  15          /*-DO NOT ADD YOUR CODE BEFORE HERE!-*\\\\\\\\\\\\\\\\\\\\\\\\\\\\\-WIDTH: 80-*/
+  16          /******************************************************************************/
+  17          
+  18          #include "loli3_recv.h"
+  19          
+  20          /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
+  21          // 以下变量在loli3_recv_sys中定义，仅在loli3_recv_sys与loli3_recv_isr中使用。
+  22          // 声明类型务必注意与loli3_recv_sys保持一致。
+  23          
+  24          extern idata volatile u32 _sys_ms;        // 当前ms值
+  25          extern idata volatile u16 _sys_us_target; // 中断发生目标us值
+  26          
+  27          /*////////////////////////////////////////////////////////////////////////////*/
+  28          // 中断函数
+  29          // 注意事项1：中断函数中调用函数的可重入问题需关注。
+  30          // 注意事项2：如果使用“using 1”“using 2”等，能够在不同中断中使用不同寄存�
+             -��组，提升响应速度……
+  31          //            但要注意中断中调用函数的所使用的寄存器地址的正确性。推荐使用#pragma 
+             -NOAREGS/#pragma AREGS，使用相对寄存器寻址。
+  32          //            或者，是否可以使用内联函数来避免这个问题？
+  33          /*////////////////////////////////////////////////////////////////////////////*/
+  34          
+  35          #if STC_15W408AS
+  36          // sys tick per ms  // PCA模块0每1ms中断一次
+  37          void isr_tick_PCA() interrupt 7
+  38          {
+  39   1        CCF0 = 0; //清除中断标志
+  40   1        _sys_us_target += 1000;
+  41   1        _sys_ms ++;
+  42   1        CCAP0L = _sys_us_target;
+  43   1        CCAP0H = _sys_us_target >> 8;
+  44   1      
+  45   1        timer_tick();
+  46   1      }
+  47          
+  48          #elif STC_8H
+              
+              void isr_tick_T1() interrupt 3
+              {
+                _sys_ms ++;
+C51 COMPILER V9.59.0.0   LOLI3_RECV_ISR_STC                                                12/13/2023 00:12:42 PAGE 2   
+
+                _sys_us_target += 1000; // 在STC8H的实现中，用于缓存us计数
+              
+                timer_tick();
+              }
+              
+              #endif
+  59          
+  60          /*////////////////////////////////////////////////////////////////////////////*/
+  61          // 以下时间按定时器工作于12T模式@12MHz频率计算
+  62          #define TIMER_DELAY_11MS    (0x10000-FOSC/12/1000000*11000)
+  63          #define TIMER_DELAY_10MS    (0x10000-FOSC/12/1000000*10000)
+  64          #define TIMER_DELAY_120US   (0x10000-FOSC/12/1000000*120)
+  65          #define TIMER_DELAY_400US   (0x10000-FOSC/12/1000000*400)
+  66          
+  67          void isr_output_T0()interrupt 1 //using 1
+  68          {
+  69   1      /*
+  70   1        通道CHn输出中断函数，使用定时器0中断用于驱动信号输出，设置高优先级中断�
+             -�提升输出波形时序准确性
+  71   1        C51中断函数注意事项：注意hw_pwm_set()和UART_pushByte()的重入问题和using调用函数问�
+             -��！！！
+  72   1      */
+  73   1      /*
+  74   1        STC定时器模式0(16位自动重装载模式): 
+  75   1          当定时器运行时，对THn,TLn写入内容实际上是写入隐藏的寄存器RL_THn，RL_TLn中。
+  76   1          定时器溢出时会自动将[RL_THn,RL_TLn]的内容重新装入[THn,TLn]。
+  77   1          既当前中断响应中设置的定时时间，是下一中断响应相关操作的持续时间。
+  78   1      */
+  79   1      /*
+  80   1        原程序存在的问题：
+  81   1          中断程序对输出模式切换没有进行处理，不可避免的会输出一小段错误数据。
+  82   1          具体来说就是: 切换到不同输出模式（SBUS/PPM/舵量）时，具体阶段是不确定的，
+             -该阶段的持续时间也是不确定的。
+  83   1      */
+  84   1        
+  85   1        static u8 step = 0; // 输出状态 // 当SBUS，setp==25
+  86   1        static u8 T_h=0,T_l=0;// 定时器装载值暂存
+  87   1      
+  88   1        u16 temp=0;
+  89   1        static u16 temp0=0;
+  90   1        
+  91   1      //----------------------------------------------------------------------------//
+  92   1      /*
+  93   1        SBUS波特率100K，每位10us*每字节数据12位（1起始+8数据+1偶校核+2停止）=120us/字节
+  94   1        SBUS每帧数据25字节，低速模式每帧间隔14ms（120us*25+11ms），高速模式每帧间隔7ms�
+             -��120us*25+4ms）
+  95   1      */
+  96   1      /*
+  97   1        原程序SBUS这一段写的很简洁精准，就是不易理解。伪代码解读如下：
+  98   1          PIN_SBUS=1;
+  99   1          if(t_sbus>24) { t_sbus=0; }
+ 100   1          else          { PUTCH(sbus_data[t_sbus]); t_sbus++; }
+ 101   1          if(t_sbus==25){ TIMER_DELAY_10MS  } // 遵照SBUS低速模式协议，此处实际应为TIMER_DELAY_11MS
+ 102   1          else          { TIMER_DELAY_120US }
+ 103   1      
+ 104   1          t_sbus范围[0-25]对应26个阶段，其中[0-24]同时对应 sbus输出的25字节，[25]对应帧间�
+             -��间间隔(11MS);
+ 105   1          [0-25]阶段设置的T0模式0时间，对应下一阶段[1-25,0]的延时；
+ 106   1          但状态已经提前转移（t_sbus++或t_sbus=0），故此时数据t_sbus实际指示的是下一阶�
+             -��；
+ 107   1          既在t_sbus==25阶段设置的间隔时间，实际是在第24阶段已经设置好，且将在第25阶
+             -段生效。
+C51 COMPILER V9.59.0.0   LOLI3_RECV_ISR_STC                                                12/13/2023 00:12:42 PAGE 3   
+
+ 108   1      */
+ 109   1        if(recv.stateOUTPUT==STATE_OUTPUT_SBUS) // SBUS
+ 110   1        {
+ 111   2          //if(reset) { reset=0;  step=25;  } // 跳转到输出SBUS[0]的前一阶段以设置SBUS[0]持续时间
+ 112   2          PIN_SBUS_SET();             // 强制将串口输出口设置为空闲状态，清除软件操作端口导致�
+             -��错误。
+ 113   2          if(step>=25)  { step=0; } // 此状态无操作，低速模式时延时11ms
+ 114   2          else                        // 此状态输出1字节数据，持续时间120us
+ 115   2          {
+ 116   3      #ifndef SBUS_DEBUG
+ 117   3      #if 0
+                    UART_pushByte(recv.SBUS_tx[step]);  // 是否存在重入/寄存器组不一致问题？
+              #else
+ 120   3            if(TI)TI=0;
+ 121   3            ACC=recv.SBUS_tx[step];
+ 122   3            TB8=P;
+ 123   3            SBUF=ACC;
+ 124   3      #endif
+ 125   3            step++;
+ 126   3      #endif
+ 127   3          }
+ 128   2      
+ 129   2          if(step>=25)  { TL0=TIMER_DELAY_11MS; TH0=TIMER_DELAY_11MS>>8;  }
+ 130   2          else          { TL0=TIMER_DELAY_120US;TH0=TIMER_DELAY_120US>>8; }
+ 131   2      
+ 132   2          if(recv.isOutputChanged && step==0)
+ 133   2          {
+ 134   3            recv.isOutputChanged = 0;
+ 135   3            if(recvSet.PPM)           { recv.stateOUTPUT=STATE_OUTPUT_PPM;   step=0;}
+ 136   3            else if(recvSet.SBUS==0)  { recv.stateOUTPUT=STATE_OUTPUT_SERVO; step=0;}
+ 137   3          }
+ 138   2        }
+ 139   1      //----------------------------------------------------------------------------//
+ 140   1        else if(recv.stateOUTPUT==STATE_OUTPUT_PPM) // PPM
+ 141   1        {
+ 142   2          //从PPM端口输出8通道数据，PPM信号总周期20ms
+ 143   2          //每通道固定0.4ms低电平开始，0.6到1.6ms（实际1.623ms）高电平结束
+ 144   2          #define PPM_CH_PULSE()  do{CH1=0;TL0=T_l;TH0=T_h;}while(0)
+ 145   2          #define PPM_CH_WIDTH()  do{CH1=1;TL0=TIMER_DELAY_400US; TH0=TIMER_DELAY_400US>>8;}while(0)
+ 146   2          //PPM尾部直接延时10ms以节约计算时间，周期不保证50Hz    
+ 147   2          #define PPM_CH_END()    do{CH1=0;TL0=TIMER_DELAY_10MS;  TH0=TIMER_DELAY_10MS>>8;}while(0)
+ 148   2          #define PPM_CH_IDLE()   PPM_CH_WIDTH()
+ 149   2          #define PPM_CH_PULSE_TIME_GET(ch) do{temp=0x10000-600-recv.CH_data[ch]; T_l=temp;T_h=temp>>8;}while(0)
+ 150   2      
+ 151   2          switch(step)
+ 152   2          {
+ 153   3            case 0: PPM_CH_IDLE();
+ 154   3                    PPM_CH_PULSE_TIME_GET(0);
+ 155   3                    break;
+ 156   3            case 1: PPM_CH_PULSE();break;
+ 157   3            case 2: PPM_CH_WIDTH();
+ 158   3                    PPM_CH_PULSE_TIME_GET(1);
+ 159   3                    break;
+ 160   3            case 3: PPM_CH_PULSE();break;
+ 161   3            case 4: PPM_CH_WIDTH();
+ 162   3                    PPM_CH_PULSE_TIME_GET(2);
+ 163   3                    break;
+ 164   3            case 5: PPM_CH_PULSE();break;
+ 165   3            case 6: PPM_CH_WIDTH();
+ 166   3                    PPM_CH_PULSE_TIME_GET(3);
+ 167   3                    break;
+ 168   3            case 7: PPM_CH_PULSE();break;
+C51 COMPILER V9.59.0.0   LOLI3_RECV_ISR_STC                                                12/13/2023 00:12:42 PAGE 4   
+
+ 169   3            case 8: PPM_CH_WIDTH();
+ 170   3                    PPM_CH_PULSE_TIME_GET(4);
+ 171   3                    break;
+ 172   3            case  9:PPM_CH_PULSE();break;
+ 173   3            case 10:PPM_CH_WIDTH();
+ 174   3                    PPM_CH_PULSE_TIME_GET(5);
+ 175   3                    break;
+ 176   3            case 11:PPM_CH_PULSE();break;
+ 177   3            case 12:PPM_CH_WIDTH();
+ 178   3                    PPM_CH_PULSE_TIME_GET(6);
+ 179   3                    break;
+ 180   3            case 13:PPM_CH_PULSE();break;
+ 181   3            case 14:PPM_CH_WIDTH();
+ 182   3                    PPM_CH_PULSE_TIME_GET(7);
+ 183   3                    break;
+ 184   3            case 15:PPM_CH_PULSE();break;
+ 185   3            case 16:PPM_CH_WIDTH();
+ 186   3                    break;
+ 187   3            case 17:PPM_CH_END();  break;
+ 188   3            default:break;
+ 189   3          }
+ 190   2      
+ 191   2          if(recv.isOutputChanged && step==0)
+ 192   2          {
+ 193   3            recv.isOutputChanged = 0;
+ 194   3            if(recvSet.SBUS)        { recv.stateOUTPUT=STATE_OUTPUT_SBUS;  step=25;}
+ 195   3            else if(recvSet.PPM==0) { recv.stateOUTPUT=STATE_OUTPUT_SERVO; step=0;}
+ 196   3          }
+ 197   2      
+ 198   2          step++; if(step>17) step=0;
+ 199   2        }
+ 200   1      //----------------------------------------------------------------------------//
+ 201   1        else
+ 202   1        { // 舵量输出周期20ms，8通道平分则每通道耗时2.5ms
+ 203   2          // PULSE_TIME+INTERVER_TIME==2.5ms，PULSE_TIME=0x10000-temp0, INTERVER_TIME=0x10000-temp
+ 204   2          // -> temp=0x10000-INTERVER_TIME=0x10000+PULSE_TIME-2500=0x10000-2500+0x10000-temp0=0x20000-2500-temp0
+ 205   2          // 经计算，temp=128572-temp0，loli3原程序temp=128600-temp0似乎有错？！
+ 206   2          #define SERVO_CH_PULSE_TIME_SET(ch) \
+ 207   2              do{ temp0=0x10000-813-((recv.CH_data[ch]*LOLI3_RECV_SERVO_RANGE_MUL)>>LOLI3_RECV_SERVO_RANGE_R_SHIFT) 
+             -;\
+ 208   2                  TL0=temp0,TH0=temp0>>8;}\
+ 209   2              while(0)
+ 210   2          #define SERVO_CH_INTERVER_TIME_SET(ch)  \
+ 211   2              do{ temp=0x20000-2500-temp0; TL0=temp,TH0=temp>>8;}\
+ 212   2              while(0)
+ 213   2              
+ 214   2          switch(step)
+ 215   2          {
+ 216   3            case 0:
+ 217   3              if(recvSet.CH8_SW==0) CH8=0;
+ 218   3              SERVO_CH_PULSE_TIME_SET(0);
+ 219   3              break;
+ 220   3      
+ 221   3            case 1:
+ 222   3              if(recvSet.CH1_PWM)     hw_pwm_set(1,recv.CH_data[0]/4);
+ 223   3              else if(recvSet.CH1_SW){if(recv.CH_data[0]<500) CH1=0; else CH1=1;}
+ 224   3              else                    CH1=1;
+ 225   3              SERVO_CH_INTERVER_TIME_SET(0);
+ 226   3              break;
+ 227   3            case 2:
+ 228   3              if(recvSet.CH1_PWM==0 && recvSet.CH1_SW==0) CH1=0;
+ 229   3              SERVO_CH_PULSE_TIME_SET(1);
+C51 COMPILER V9.59.0.0   LOLI3_RECV_ISR_STC                                                12/13/2023 00:12:42 PAGE 5   
+
+ 230   3              break;
+ 231   3      
+ 232   3            case 3:
+ 233   3              if(recvSet.CH2_PWM)     hw_pwm_set(2,recv.CH_data[1]/4);
+ 234   3              else if(recvSet.CH2_SW){if(recv.CH_data[1]<500) CH2=0; else CH2=1;}
+ 235   3              else                    CH2=1;
+ 236   3              SERVO_CH_INTERVER_TIME_SET(1);
+ 237   3              break;
+ 238   3            case 4:
+ 239   3              if(recvSet.CH2_PWM==0 && recvSet.CH2_SW==0) CH2=0;
+ 240   3              SERVO_CH_PULSE_TIME_SET(2);
+ 241   3              break;
+ 242   3      
+ 243   3            case 5:
+ 244   3              if(recvSet.CH3_SW) {if(recv.CH_data[2]<500) CH3=0; else CH3=1;}
+ 245   3              else                CH3=1;
+ 246   3              SERVO_CH_INTERVER_TIME_SET(2);
+ 247   3              break;
+ 248   3            case 6:
+ 249   3              if(recvSet.CH3_SW==0) CH3=0;
+ 250   3              SERVO_CH_PULSE_TIME_SET(3);
+ 251   3              break;
+ 252   3      
+ 253   3            case 7:
+ 254   3              if(recvSet.CH4_SW) {if(recv.CH_data[3]<500) CH4=0; else CH4=1;}
+ 255   3              else                CH4=1;
+ 256   3              SERVO_CH_INTERVER_TIME_SET(3);
+ 257   3              break;
+ 258   3            case 8:
+ 259   3              if(recvSet.CH4_SW==0) CH4=0;
+ 260   3              SERVO_CH_PULSE_TIME_SET(4);
+ 261   3              break;
+ 262   3      
+ 263   3            case 9:
+ 264   3              if(recvSet.CH5_SW) {if(recv.CH_data[4]<500) CH5=0; else CH5=1;}
+ 265   3              else                CH5=1;
+ 266   3              SERVO_CH_INTERVER_TIME_SET(4);
+ 267   3              break;
+ 268   3            case 10:
+ 269   3              if(recvSet.CH5_SW==0) CH5=0;
+ 270   3              SERVO_CH_PULSE_TIME_SET(5);
+ 271   3              break;
+ 272   3      
+ 273   3            case 11:
+ 274   3              if(recvSet.CH6_SW) {if(recv.CH_data[5]<500) CH6=0; else CH6=1;}
+ 275   3              else                CH6=1;
+ 276   3              SERVO_CH_INTERVER_TIME_SET(5);
+ 277   3              break;
+ 278   3            case 12:
+ 279   3              if(recvSet.CH6_SW==0) CH6=0;
+ 280   3              SERVO_CH_PULSE_TIME_SET(6);
+ 281   3              break;
+ 282   3      
+ 283   3            case 13:
+ 284   3              // 硬件串口对应通道
+ 285   3              #ifndef SBUS_DEBUG
+ 286   3              if(recvSet.CH7_SW) {if(recv.CH_data[6]<500) CH7=0; else CH7=1;}
+ 287   3              else                CH7=1;
+ 288   3              #endif
+ 289   3              SERVO_CH_INTERVER_TIME_SET(6);
+ 290   3              break;
+ 291   3            case 14:
+C51 COMPILER V9.59.0.0   LOLI3_RECV_ISR_STC                                                12/13/2023 00:12:42 PAGE 6   
+
+ 292   3              #ifndef SBUS_DEBUG
+ 293   3              if(recvSet.CH7_SW==0) CH7=0;
+ 294   3              #endif
+ 295   3              SERVO_CH_PULSE_TIME_SET(7);
+ 296   3              break;
+ 297   3      
+ 298   3            case 15:
+ 299   3              if(recvSet.CH8_SW) {if(recv.CH_data[7]<500) CH8=0; else CH8=1;}
+ 300   3              else                CH8=1;
+ 301   3              SERVO_CH_INTERVER_TIME_SET(7);
+ 302   3              break;
+ 303   3            default:break;
+ 304   3          }
+ 305   2      
+ 306   2          if(recv.isOutputChanged && step==0)
+ 307   2          {
+ 308   3            recv.isOutputChanged = 0;
+ 309   3            if(recvSet.SBUS)      { recv.stateOUTPUT=STATE_OUTPUT_SBUS; step=25;}
+ 310   3            else if(recvSet.PPM)  { recv.stateOUTPUT=STATE_OUTPUT_PPM; step=0;}
+ 311   3          }
+ 312   2      
+ 313   2          step++; if(step>15) step=0;
+ 314   2        }
+ 315   1      }
+ 316          
+ 317          /******************************************************************************/
+ 318          /*-DO NOT ADD YOUR CODE AFTER HERE!-*\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\-WIDTH: 80-*/
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1337    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      5       2
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

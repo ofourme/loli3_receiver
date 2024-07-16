@@ -1,0 +1,307 @@
+C51 COMPILER V9.59.0.0   APP                                                               12/13/2023 00:12:42 PAGE 1   
+
+
+C51 COMPILER V9.59.0.0, COMPILATION OF MODULE APP
+OBJECT MODULE PLACED IN .\Objects\app.obj
+COMPILER INVOKED BY: C:\bin\Keil_v5\C51\BIN\C51.EXE ..\src\app.c OPTIMIZE(8,SPEED) BROWSE INCDIR(..\port;..\src) DEBUG O
+                    -BJECTEXTEND PRINT(.\Listings\app.lst) TABS(2) OBJECT(.\Objects\app.obj)
+
+line level    source
+
+   1          /*
+   2          ********************************************************************************
+   3          *                             ---ofme---
+   4          *           Copyleft (c) 2021-2023, 微风山谷 / ofourme@163.com
+   5          *           License: LGPL
+   6          *
+   7          *   APP.C-V1.0.0 (2023.Oct.27th)
+   8          *
+   9          ********************************************************************************
+  10          */
+  11          
+  12          #define __APP_C__
+  13          
+  14          /*-DO NOT ADD YOUR CODE BEFORE HERE!-*\\\\\\\\\\\\\\\\\\\\\\\\\\\\\-WIDTH: 80-*/
+  15          /******************************************************************************/
+  16          
+  17          #include "loli3_recv.h"
+  18          
+  19          /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
+  20          
+  21          
+  22          /*////////////////////////////////////////////////////////////////////////////*/
+  23          
+  24          void setup(void)
+  25          {
+  26   1        hw_sys_init();
+  27   1      
+  28   1        LED_on();
+  29   1        delay(200);
+  30   1      
+  31   1        timers_init();
+  32   1        timer_startCycle(TIMER_ADC, 50);
+  33   1        timer_startCycle(TIMER_SIGNAL_COUNT,1000);
+  34   1        DBG("LOLI3 recv start up.");
+  35   1      
+  36   1        recv_init();
+  37   1        LED_off();    //点亮指示灯再关闭，表示单片机正常工作
+  38   1      
+  39   1        NRF_channel(recvSet.hopping[0]);
+  40   1        while(noRF());
+  41   1        DBG("LOLI3 recv connected.");
+  42   1        recv_begin();
+  43   1      
+  44   1        DBG("ADDR:");
+  45   1        DBG(Int16ToStr(recvSet.address[0]));
+  46   1        DBG(Int16ToStr(recvSet.address[1]));
+  47   1        DBG(Int16ToStr(recvSet.address[2]));
+  48   1        DBG(Int16ToStr(recvSet.address[3]));
+  49   1        DBG(Int16ToStr(recvSet.address[4]));
+  50   1        DBG("HOPPING:");
+  51   1        DBG(Int16ToStr(recvSet.hopping[0]));
+  52   1        DBG(Int16ToStr(recvSet.hopping[1]));
+  53   1        DBG(Int16ToStr(recvSet.hopping[2]));
+  54   1        DBG(Int16ToStr(recvSet.hopping[3]));
+C51 COMPILER V9.59.0.0   APP                                                               12/13/2023 00:12:42 PAGE 2   
+
+  55   1        DBG(Int16ToStr(recvSet.hopping[4]));
+  56   1        DBG("REG stat:");
+  57   1        DBG(Int16ToStr(NRF_REG_read(0x00)));
+  58   1        DBG(Int16ToStr(NRF_REG_read(0x01)));
+  59   1        DBG(Int16ToStr(NRF_REG_read(0x02)));
+  60   1        DBG(Int16ToStr(NRF_REG_read(0x03)));
+  61   1        DBG(Int16ToStr(NRF_REG_read(0x04)));
+  62   1        DBG(Int16ToStr(NRF_REG_read(0x05)));
+  63   1        DBG(Int16ToStr(NRF_REG_read(0x06)));
+  64   1        DBG(Int16ToStr(NRF_REG_read(0x07)));
+  65   1        DBG("REG +8");
+  66   1        DBG(Int16ToStr(NRF_REG_read(0x08)));
+  67   1        DBG(Int16ToStr(NRF_REG_read(0x09)));
+  68   1        DBG(Int16ToStr(NRF_REG_read(0x0a)));
+  69   1        DBG(Int16ToStr(NRF_REG_read(0x0b)));
+  70   1        DBG(Int16ToStr(NRF_REG_read(0x0c)));
+  71   1        DBG(Int16ToStr(NRF_REG_read(0x0d)));
+  72   1        DBG(Int16ToStr(NRF_REG_read(0x0e)));
+  73   1        DBG(Int16ToStr(NRF_REG_read(0x0f)));
+  74   1        DBG("REG +8");
+  75   1        DBG(Int16ToStr(NRF_REG_read(0x10)));
+  76   1        DBG(Int16ToStr(NRF_REG_read(0x11)));
+  77   1        DBG(Int16ToStr(NRF_REG_read(0x12)));
+  78   1        DBG(Int16ToStr(NRF_REG_read(0x13)));
+  79   1        DBG("REG +4");
+  80   1        DBG("REG end.");
+  81   1      }
+  82          
+  83          /*////////////////////////////////////////////////////////////////////////////*/
+  84          
+  85          #if 1
+  86          u8 temp=0;
+  87          #endif
+  88          
+  89          void loop (void)
+  90          {
+  91   1        u16 buff[8];
+  92   1        u8 i;
+  93   1        static u16 t1,t2;
+  94   1      
+  95   1          timer_process();
+  96   1      
+  97   1          switch(recv.stateLED)
+  98   1          {
+  99   2            case STATE_LED_OFF:
+ 100   2              LED_off();
+ 101   2              recv.stateLED = STATE_LED_IDLE;
+ 102   2              break;
+ 103   2            case STATE_LED_FLASH:
+ 104   2              LED_on();
+ 105   2              timer_startOnce(TIMER_LED_OFF,10);
+ 106   2              recv.stateLED = STATE_LED_IDLE;
+ 107   2              break;
+ 108   2            case STATE_LED_ON:
+ 109   2              LED_on();
+ 110   2              break;
+ 111   2            case STATE_LED_IDLE:
+ 112   2              break;
+ 113   2            default:
+ 114   2              break;
+ 115   2          }
+ 116   1      
+C51 COMPILER V9.59.0.0   APP                                                               12/13/2023 00:12:42 PAGE 3   
+
+ 117   1          switch(recv.stateNRF)
+ 118   1          {
+ 119   2            case STATE_NRF_RX:
+ 120   2              if(noRF()) break;
+ 121   2      
+ 122   2              if(recv.stateLED ==STATE_LED_ON) recv.stateLED = STATE_LED_OFF;
+ 123   2      
+ 124   2              nrf.rx_cnt++;
+ 125   2              nrf.hopping_cnt=0;//收到有效信号后刷新跳频器
+ 126   2      
+ 127   2              timer_startOnce(TIMER_SIGNAL_LOST, 2000);
+ 128   2              timer_startCycle(TIMER_CHANNEL_LOST, 24); //3*7~3*8
+ 129   2      
+ 130   2              NRF_FIFO_read(nrf.rx, LOLI3_NRF_DATA_LENGTH);   //读取接收数据
+ 131   2              NRF_irq_clean();
+ 132   2      
+ 133   2              NRF_mode_tx();
+ 134   2              recv.stateNRF = STATE_NRF_TX;
+ 135   2              //break;
+ 136   2            case STATE_NRF_TX:
+ 137   2              nrf.tx[0]=recv.rx_num;
+ 138   2              // nrf.tx[0]=20;  // for test
+ 139   2      #if 1
+ 140   2              if(temp!=recv.rx_num)
+ 141   2              {
+ 142   3                temp = recv.rx_num;
+ 143   3                DBG("rx num: ");
+ 144   3                DBG(Int16ToStr(temp));
+ 145   3              }
+ 146   2      #endif
+ 147   2              // 详见《STC15》P898说明，此处输出voltage需扩大100倍，而输入adc值放大系数为8�
+             -��故*100*8
+ 148   2              recv.voltage_ic=VOLTAGE_IC_ADJUST/_adc_ic;
+ 149   2              // recv.voltage_ic=500; // for test
+ 150   2              nrf.tx[1]=recv.voltage_ic>>8;
+ 151   2              nrf.tx[2]=recv.voltage_ic;
+ 152   2              // >>13 表示10位ADC占比再除以8（_adc_batt放大系数）
+ 153   2              recv.voltage_batt=((long)_adc_batt*recv.voltage_ic*VOLTAGE_BAT_MULTIPLE)>>13;
+ 154   2              // recv.voltage_batt=500; // for test
+ 155   2              nrf.tx[3]=recv.voltage_batt>>8;
+ 156   2              nrf.tx[4]=recv.voltage_batt;
+ 157   2              NRF_FIFO_write(nrf.tx, LOLI3_NRF_DATA_LENGTH);
+ 158   2      
+ 159   2              recv.stateNRF = STATE_NRF_TX_WAIT;
+ 160   2              t1 = micros();
+ 161   2              //break;
+ 162   2            case STATE_NRF_TX_WAIT:
+ 163   2              t2 = micros()-t1;
+ 164   2              if(!noRF() || t2>=1000) // wait about 0.72ms for TX_DS irq
+ 165   2              {
+ 166   3                //if(!noRF())  DBG("tx finished.");
+ 167   3                if(t2>=1000) DBG(Int16ToStr(t2)); // timeout
+ 168   3                NRF_mode_rx();  // NRF_irq_clean(); change mode would clean irq.
+ 169   3                recv.stateNRF = STATE_NRF_DATA_PROC;
+ 170   3              }
+ 171   2              break;
+ 172   2            case STATE_NRF_DATA_PROC:
+ 173   2              nrf.channel_index++;
+ 174   2              if(nrf.channel_index>4)nrf.channel_index=0;
+ 175   2              NRF_channel(recvSet.hopping[nrf.channel_index]);
+ 176   2      
+ 177   2              if(nrf.rx[0]==0xa2)
+C51 COMPILER V9.59.0.0   APP                                                               12/13/2023 00:12:42 PAGE 4   
+
+ 178   2              {
+ 179   3                if(nrf.rx[1]&0x80)  { recvSet.PPM=1;  }
+ 180   3                else                { recvSet.PPM=0;  }
+ 181   3                if(nrf.rx[1]&0x40)  { recvSet.SBUS=1;     }
+ 182   3                else                { recvSet.SBUS=0;     }
+ 183   3                if(nrf.rx[1]&0x08)  { recvSet.CH1_PWM=1; hw_pwm_en(1); }
+ 184   3                else                { recvSet.CH1_PWM=0; hw_pwm_dis(1);}
+ 185   3                if(nrf.rx[1]&0x04)  { recvSet.CH2_PWM=1; hw_pwm_en(2); }
+ 186   3                else                { recvSet.CH2_PWM=0; hw_pwm_dis(2);}
+ 187   3      #if STC_8H
+                        if(nrf.rx[1]&0x02)  { recvSet.CH7_PWM=1; hw_pwm_en(7); }//recvSet.CH7_PWM=1;  } // STC15W取消�
+             -��STC8H恢复
+                        else                { recvSet.CH7_PWM=0; hw_pwm_en(7); }//recvSet.CH7_PWM=0;  }
+                        if(nrf.rx[1]&0x01)  { recvSet.CH6_PWM=1; hw_pwm_en(6); }//recvSet.CH6_PWM=1;  } // STC8H扩展
+                        else                { recvSet.CH6_PWM=0; hw_pwm_en(6); }//recvSet.CH6_PWM=0;  }
+              #endif
+ 193   3                if(nrf.rx[2]&0x80)  { recvSet.CH1_SW=1;   }
+ 194   3                else                { recvSet.CH1_SW=0;   }
+ 195   3                if(nrf.rx[2]&0x40)  { recvSet.CH2_SW=1;   }
+ 196   3                else                { recvSet.CH2_SW=0;   }
+ 197   3                if(nrf.rx[2]&0x20)  { recvSet.CH3_SW=1;   }
+ 198   3                else                { recvSet.CH3_SW=0;   }
+ 199   3                if(nrf.rx[2]&0x10)  { recvSet.CH4_SW=1;   }
+ 200   3                else                { recvSet.CH4_SW=0;   }
+ 201   3                if(nrf.rx[2]&0x08)  { recvSet.CH5_SW=1;   }
+ 202   3                else                { recvSet.CH5_SW=0;   }
+ 203   3                if(nrf.rx[2]&0x04)  { recvSet.CH6_SW=1;   }
+ 204   3                else                { recvSet.CH6_SW=0;   }
+ 205   3                if(nrf.rx[2]&0x02)  { recvSet.CH7_SW=1;   }
+ 206   3                else                { recvSet.CH7_SW=0;   }
+ 207   3                if(nrf.rx[2]&0x01)  { recvSet.CH8_SW=1;   }
+ 208   3                else                { recvSet.CH8_SW=0;   }
+ 209   3      
+ 210   3                recv.isOutputChanged = 1;
+ 211   3                DBG("OUTPUT mode changed");
+ 212   3                timer_startOnce(TIMER_DATA_SAVE, 1000); // save data 1000ms later
+ 213   3              }
+ 214   2              else if(nrf.rx[0]==0xa0 || nrf.rx[0]==0xa1)
+ 215   2              {
+ 216   3                buff[0]=nrf.rx[1];
+ 217   3                buff[0]<<=2;
+ 218   3                buff[0]+=nrf.rx[2]>>6;
+ 219   3                buff[1]=nrf.rx[2]&0x3f;
+ 220   3                buff[1]<<=4;
+ 221   3                buff[1]+=nrf.rx[3]>>4;
+ 222   3                buff[2]=nrf.rx[3]&0x0f;
+ 223   3                buff[2]<<=6;
+ 224   3                buff[2]+=nrf.rx[4]>>2;
+ 225   3                buff[3]=nrf.rx[4]&0x03;
+ 226   3                buff[3]<<=8;
+ 227   3                buff[3]+=nrf.rx[5];
+ 228   3      
+ 229   3                buff[4]=nrf.rx[6];
+ 230   3                buff[4]<<=2;
+ 231   3                buff[4]+=nrf.rx[7]>>6;
+ 232   3                buff[5]=nrf.rx[7]&0x3f;
+ 233   3                buff[5]<<=4;
+ 234   3                buff[5]+=nrf.rx[8]>>4;
+ 235   3                buff[6]=nrf.rx[8]&0x0f;
+ 236   3                buff[6]<<=6;
+ 237   3                buff[6]+=nrf.rx[9]>>2;
+ 238   3                buff[7]=nrf.rx[9]&0x03;
+C51 COMPILER V9.59.0.0   APP                                                               12/13/2023 00:12:42 PAGE 5   
+
+ 239   3                buff[7]<<=8;
+ 240   3                buff[7]+=nrf.rx[10];
+ 241   3      
+ 242   3                if(nrf.rx[0]==0xa0)
+ 243   3                {
+ 244   4                  for(i=0; i<8; i++)
+ 245   4                  {
+ 246   5                    recvSet.out_control_data[i]=buff[i];
+ 247   5                  }
+ 248   4      
+ 249   4                  timer_startOnce(TIMER_DATA_SAVE, 1000); // save data 1000ms later
+ 250   4                }
+ 251   3                else  // nrf.rx[0]==0xa1
+ 252   3                {
+ 253   4                  for(i=0; i<8; i++)
+ 254   4                  {
+ 255   5                    DATA_mutex_get();   // 防止中断程序输出错误数据
+ 256   5                    recv.CH_data[i]=buff[i];
+ 257   5                    DATA_mutex_release();
+ 258   5                  }
+ 259   4                  SBUS_data_push();
+ 260   4                }
+ 261   3            }
+ 262   2      
+ 263   2            recv.stateNRF = STATE_NRF_RX;
+ 264   2            break;
+ 265   2          default:
+ 266   2            //NRF_mode_rx();
+ 267   2            recv.stateNRF = STATE_NRF_RX;
+ 268   2            break;
+ 269   2          }
+ 270   1      }
+ 271          
+ 272          /******************************************************************************/
+ 273          /*-DO NOT ADD YOUR CODE AFTER HERE!-*\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\-WIDTH: 80-*/
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1052    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      5      17
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

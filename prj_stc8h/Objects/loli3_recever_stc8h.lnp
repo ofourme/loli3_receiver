@@ -1,0 +1,9 @@
+".\Objects\main.obj",
+".\Objects\STARTUP.obj",
+".\Objects\loli3_lib.obj",
+".\Objects\loli3_recv.obj",
+".\Objects\app.obj",
+".\Objects\loli3_recv_sys_stc.obj",
+".\Objects\loli3_recv_isr_stc.obj" 
+TO ".\Objects\loli3_recever_stc8h" 
+PRINT(".\Listings\loli3_recever_stc8h.m51") RAMSIZE(256) 

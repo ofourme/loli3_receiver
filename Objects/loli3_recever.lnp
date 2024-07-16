@@ -1,8 +1,0 @@
-".\Objects\STARTUP.obj",
-".\Objects\main.obj",
-".\Objects\lib.obj",
-".\Objects\hw.obj" 
-TO ".\Objects\loli3_recever" 
-PRINT(".\Listings\loli3_recever.m51") RAMSIZE(256) 
-CODE( 0X0000-0X1FF8 )
-XDATA( 0X0000-0X00FF )

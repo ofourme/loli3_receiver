@@ -1,0 +1,11 @@
+".\Objects\main.obj",
+".\Objects\STARTUP.obj",
+".\Objects\loli3_lib.obj",
+".\Objects\loli3_recv.obj",
+".\Objects\app.obj",
+".\Objects\loli3_recv_sys_stc.obj",
+".\Objects\loli3_recv_isr_stc.obj" 
+TO ".\Objects\loli3_recever_stc15w" 
+PRINT(".\Listings\loli3_recever_stc15w.m51") RAMSIZE(256) 
+CODE( 0X0000-0X1FF8 )
+XDATA( 0X0000-0X00FF )

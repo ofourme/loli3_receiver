@@ -1,0 +1,472 @@
+C51 COMPILER V9.59.0.0   LOLI3_LIB                                                         12/13/2023 00:12:42 PAGE 1   
+
+
+C51 COMPILER V9.59.0.0, COMPILATION OF MODULE LOLI3_LIB
+OBJECT MODULE PLACED IN .\Objects\loli3_lib.obj
+COMPILER INVOKED BY: C:\bin\Keil_v5\C51\BIN\C51.EXE ..\src\loli3_lib.c OPTIMIZE(8,SPEED) BROWSE INCDIR(..\port;..\src) D
+                    -EBUG OBJECTEXTEND PRINT(.\Listings\loli3_lib.lst) TABS(2) OBJECT(.\Objects\loli3_lib.obj)
+
+line level    source
+
+   1          /*
+   2          ********************************************************************************
+   3          *                             ---ofme---
+   4          *           Copyleft (c) 2021-2023, 微风山谷 / ofourme@163.com
+   5          *           License: LGPL
+   6          *
+   7          *   LOLI3_LIB.C-V1.0.0 (2023.Sep.25th)
+   8          *
+   9          ********************************************************************************
+  10          */
+  11          
+  12          #define __LOLI3_LIB_C__
+  13          
+  14          /*-DO NOT ADD YOUR CODE BEFORE HERE!-*\\\\\\\\\\\\\\\\\\\\\\\\\\\\\-WIDTH: 80-*/
+  15          /******************************************************************************/
+  16          
+  17          #include "loli3_lib.h"
+  18          
+  19          /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
+  20          
+  21          //串口通信
+  22          #if defined( SBUS_BPS_115200 )
+                #define UART_BPS  UART_BPS_115200
+              #elif defined ( SBUS_BPS_9600 )
+                #define UART_BPS  UART_BPS_9600
+              #else
+  27            #define UART_BPS  UART_BPS_100K
+  28          #endif
+  29          
+  30          /*////////////////////////////////////////////////////////////////////////////*/
+  31          // soft SPI
+  32          #define SPI_MODE_0    (0<<0)
+  33          #define SPI_MODE_1    (1<<0)
+  34          #define SPI_MODE_2    (2<<0)
+  35          #define SPI_MODE_3    (3<<0)
+  36          #define SPI_MSBFIRST  (0<<2)
+  37          #define SPI_LSBFIRST  (1<<2)
+  38          #define SPI_SPEED_SOF (0<<3)
+  39          
+  40          u8   SPI_begin(u8 setting);
+  41          u8   SPI_transfer(u8 byte);
+  42          void SPI_slaveEnable(void);
+  43          void SPI_slaveDisable(void);
+  44          
+  45          u8 SPI_begin(u8 setting)
+  46          {
+  47   1        if(setting!=(SPI_MODE_0|SPI_MSBFIRST)) return 0;
+  48   1      
+  49   1        // set SCK/MOSI/NSS output mode, MISO input mode
+  50   1        SPI_init_0();//端口模式初始化
+  51   1        // then set SCK/MOSI 0, set NNS 1.
+  52   1        SPI_init_1();//软件or硬件初始化
+  53   1      
+  54   1        return 1;
+C51 COMPILER V9.59.0.0   LOLI3_LIB                                                         12/13/2023 00:12:42 PAGE 2   
+
+  55   1      }
+  56          
+  57          u8 SPI_transfer(u8 byte)
+  58          {
+  59   1        u8 i;
+  60   1        for(i=0;i<8;i++)
+  61   1        {
+  62   2          if(byte&0x80) SPI_MOSI_SET();
+  63   2          else          SPI_MOSI_CLR();
+  64   2          SPI_SCK_SET();
+  65   2          byte<<=1;
+  66   2          byte|=SPI_MISO_GET();
+  67   2          SPI_SCK_CLR();
+  68   2        }
+  69   1        return byte;
+  70   1      }
+  71          
+  72          void SPI_slaveEnable(void)
+  73          {
+  74   1        SPI_SLAVE_EN();
+  75   1      }
+  76          
+  77          void SPI_slaveDisable(void)
+  78          {
+  79   1        SPI_SLAVE_DIS();
+  80   1      }
+  81          
+  82          /*
+  83          void SPI_end(void)
+  84          {
+  85          
+  86          }
+  87          */
+  88          
+  89          /*////////////////////////////////////////////////////////////////////////////*/
+  90          //NRF24L01
+  91          u8 NRF_REG_read(u8 address)
+  92          {
+  93   1        u8 t;
+  94   1        SPI_slaveEnable();
+  95   1        SPI_transfer(0x00+address);
+  96   1        t = SPI_transfer(0x00);
+  97   1        SPI_slaveDisable();
+  98   1      
+  99   1        return t;
+ 100   1      }
+ 101          
+ 102          void NRF_REG_write(u8 address,u8 command)
+ 103          {
+ 104   1        SPI_slaveEnable();
+ 105   1        SPI_transfer(0x20+address);
+ 106   1        SPI_transfer(command);
+ 107   1        SPI_slaveDisable();
+ 108   1      }
+ 109          
+ 110          void NRF_init_0(void)
+ 111          {
+ 112   1        SPI_begin(0);
+ 113   1        NRF_CE_CLR();
+ 114   1        NRF_REG_write(0x00,0x0a); //CRC使能，上电
+ 115   1        NRF_REG_write(0x01,0x00); //禁止 自动应答
+ 116   1        NRF_REG_write(0x02,0x01); //允许 P0信道
+C51 COMPILER V9.59.0.0   LOLI3_LIB                                                         12/13/2023 00:12:42 PAGE 3   
+
+ 117   1        NRF_REG_write(0x04,0x00); //禁止 自动重发
+ 118   1        NRF_CE_SET();
+ 119   1      }
+ 120          
+ 121          void NRF_FIFO_write(u8 DATA_OUT[],u8 lengh)
+ 122          {
+ 123   1        u8 i;
+ 124   1      
+ 125   1        SPI_slaveEnable();
+ 126   1        SPI_transfer(0xa0);
+ 127   1        for(i=0;i<lengh;i++) SPI_transfer(DATA_OUT[i]);
+ 128   1        SPI_slaveDisable();
+ 129   1      }
+ 130          
+ 131          void NRF_FIFO_read(u8 DATA_IN[],u8 lengh)
+ 132          {
+ 133   1        u8 i;
+ 134   1      
+ 135   1        SPI_slaveEnable();
+ 136   1        SPI_transfer(0x61); //读取命令
+ 137   1        for(i=0;i<lengh;i++) DATA_IN[i]=SPI_transfer(0);
+ 138   1        SPI_slaveDisable();
+ 139   1      }
+ 140          
+ 141          void NRF_addr_tx(u8 DATA_IN[])
+ 142          {
+ 143   1        SPI_slaveEnable();
+ 144   1        SPI_transfer(0x20+0x10);
+ 145   1        SPI_transfer(DATA_IN[0]);
+ 146   1        SPI_transfer(DATA_IN[1]);
+ 147   1        SPI_transfer(DATA_IN[2]);
+ 148   1        SPI_transfer(DATA_IN[3]);
+ 149   1        SPI_transfer(DATA_IN[4]);
+ 150   1        SPI_slaveDisable();
+ 151   1      }
+ 152          void NRF_addr_rx(u8 DATA_IN[])
+ 153          {
+ 154   1        SPI_slaveEnable();
+ 155   1        SPI_transfer(0x20+0x0a);
+ 156   1        SPI_transfer(DATA_IN[0]);
+ 157   1        SPI_transfer(DATA_IN[1]);
+ 158   1        SPI_transfer(DATA_IN[2]);
+ 159   1        SPI_transfer(DATA_IN[3]);
+ 160   1        SPI_transfer(DATA_IN[4]);
+ 161   1        SPI_slaveDisable();
+ 162   1      }
+ 163          void NRF_mode_rx()
+ 164          {
+ 165   1        NRF_CE_CLR();
+ 166   1        NRF_REG_write(0x00,0x3b); //CRC,8 bit,Power on,RX
+ 167   1        NRF_CE_SET();
+ 168   1      }
+ 169          
+ 170          void NRF_mode_tx()
+ 171          {
+ 172   1        NRF_CE_CLR();
+ 173   1        NRF_REG_write(0x00,0x0a);
+ 174   1        NRF_CE_SET();
+ 175   1      }
+ 176          
+ 177          void  NRF_power(u8 P)       //发射功率设置
+ 178          {
+C51 COMPILER V9.59.0.0   LOLI3_LIB                                                         12/13/2023 00:12:42 PAGE 4   
+
+ 179   1        NRF_CE_CLR();
+ 180   1        if(P>=3)     NRF_REG_write(0x06,0x27);    //0db 修正之前注释错误
+ 181   1        else if(P==2)NRF_REG_write(0x06,0x25);    //-6db
+ 182   1        else if(P==1)NRF_REG_write(0x06,0x23);    //-12db
+ 183   1        else if(P==0)NRF_REG_write(0x06,0x21);    //-18db
+ 184   1        NRF_CE_SET();
+ 185   1      }
+ 186          
+ 187          void NRF_channel(u8 c)
+ 188          {
+ 189   1        NRF_CE_CLR();
+ 190   1        NRF_REG_write(0x05,c);
+ 191   1        NRF_CE_SET();
+ 192   1      }
+ 193          
+ 194          void NRF_irq_clean(void)
+ 195          {
+ 196   1          NRF_CE_CLR();
+ 197   1          NRF_REG_write(0x07,0x70); //清除无线模块（重发失败+发送完成+数据接受）中断信号
+ 198   1          NRF_CE_SET();
+ 199   1      }
+ 200          
+ 201          void NRF_data_length(u8 l)
+ 202          {
+ 203   1        NRF_CE_CLR();
+ 204   1        NRF_REG_write(0x11,l);
+ 205   1        NRF_CE_SET();
+ 206   1      }
+ 207          
+ 208          void NRF_init(void) //u8 ch,u8 address[])
+ 209          {
+ 210   1        NRF_init_0();
+ 211   1        NRF_mode_rx();
+ 212   1      //  NRF_channel(ch);
+ 213   1        NRF_power(0);
+ 214   1        NRF_data_length(LOLI3_NRF_DATA_LENGTH);
+ 215   1      //  NRF_addr_rx(address);
+ 216   1      //  NRF_addr_tx(address);
+ 217   1      }
+ 218          
+ 219          void NRF_reset()
+ 220          {
+ 221   1        NRF_init_0();
+ 222   1        NRF_irq_clean();
+ 223   1      
+ 224   1        SPI_slaveEnable();
+ 225   1        SPI_transfer(0xe1); // FLUSH_TX
+ 226   1        SPI_slaveDisable();
+ 227   1        SPI_slaveEnable();
+ 228   1        SPI_transfer(0xe2); // FLUSH_RX
+ 229   1        SPI_slaveDisable();
+ 230   1      }
+ 231          
+ 232          u8 NRF_test() //无线模块终极测试
+ 233          {
+ 234   1        u8 NRF_error = 0;
+ 235   1        u8 tx[1] = {'T'};
+ 236   1        u8 temp;
+ 237   1      
+ 238   1        NRF_CE_CLR();
+ 239   1      #if 1
+ 240   1        if(noRF()==0)         NRF_error |= NRF_BAD_IRQ;
+C51 COMPILER V9.59.0.0   LOLI3_LIB                                                         12/13/2023 00:12:42 PAGE 5   
+
+ 241   1      #endif
+ 242   1      
+ 243   1        // 参考与24L01兼容的《SI24R1中文用户手册》，每一次 SPI 操作，MISO 输出的第一字
+             -节为状态寄存器的值，之后通过命令来确定是否输出值(不输出为高阻态)。
+ 244   1        SPI_slaveEnable();
+ 245   1        if((temp=SPI_transfer(0x20))!=0x0e){// 状态寄存器RX FIFO不为空，说明模块没有重启
+ 246   2          NRF_error |= NRF_BAD_RESET;
+ 247   2        }
+ 248   1        SPI_transfer(0x0a); // 将0x0a写入配置寄存器
+ 249   1        SPI_slaveDisable();
+ 250   1      
+ 251   1        SPI_slaveEnable();
+ 252   1        SPI_transfer(0x00);
+ 253   1        if(SPI_transfer(0x00)!=0x0a){NRF_error|=NRF_BAD_MOSI;}//MOSI bad
+ 254   1        SPI_slaveDisable();
+ 255   1      
+ 256   1        NRF_REG_write(0x01,0x00);
+ 257   1        NRF_REG_write(0x04,0x00);
+ 258   1        NRF_REG_write(0x11,1);
+ 259   1        NRF_FIFO_write(tx,1);
+ 260   1        NRF_CE_SET(); // 启动发送
+ 261   1        delay(2);     // 等待发送完毕
+ 262   1        SPI_slaveEnable();
+ 263   1        if(SPI_transfer(0x00)!=0x2e){NRF_error|=NRF_BAD_CE+NRF_BAD_MISO;}//状态寄存器没有发射完成中�
+             -�，说明CE bad
+ 264   1        SPI_slaveDisable();
+ 265   1      
+ 266   1        if(noRF()) NRF_error|=NRF_BAD_IRQ;
+ 267   1      
+ 268   1        if(NRF_error && NRF_error!=NRF_BAD_RESET) NRF_error|=NRF_BAD_CSNCLK;//CSN,CLK bad
+ 269   1      
+ 270   1        NRF_irq_clean();
+ 271   1        //NRF_CE_SET();
+ 272   1      
+ 273   1        return NRF_error;
+ 274   1      }
+ 275          
+ 276          /*////////////////////////////////////////////////////////////////////////////*/
+ 277          
+ 278          u8 EEPROM_test(void)
+ 279          {
+ 280   1        u8 addrPage = 1;
+ 281   1      
+ 282   1        EEPROM_begin();
+ 283   1      
+ 284   1        EEPROM_cleanPage(addrPage);
+ 285   1        EEPROM_write(SIZE_EEPROM_PAGE*addrPage,0xAA);
+ 286   1        if(EEPROM_read(SIZE_EEPROM_PAGE*addrPage)!=0xAA)  {EEPROM_end();  return 1; }//err
+ 287   1        EEPROM_cleanPage(addrPage);
+ 288   1        EEPROM_write(SIZE_EEPROM_PAGE*addrPage,0x55);
+ 289   1        if(EEPROM_read(SIZE_EEPROM_PAGE*addrPage)!=0x55)  {EEPROM_end();  return 1; }//err
+ 290   1      
+ 291   1        EEPROM_end(); // bugfix(20230924): add in
+ 292   1        
+ 293   1        return 0; //ok
+ 294   1      }
+ 295          
+ 296          /*----------------------------------------------------------------------------*/
+ 297          
+ 298          void LED_flash(u8 t)
+ 299          {
+ 300   1        while(t)
+C51 COMPILER V9.59.0.0   LOLI3_LIB                                                         12/13/2023 00:12:42 PAGE 6   
+
+ 301   1        {
+ 302   2          LED_ON();
+ 303   2          delay(50);
+ 304   2          LED_OFF();
+ 305   2          delay(50);
+ 306   2          t--;
+ 307   2        }
+ 308   1      }
+ 309          
+ 310          /*----------------------------------------------------------------------------*/
+ 311          
+ 312          char* Int16ToStr(u16 i)
+ 313          {
+ 314   1        u8 t;
+ 315   1        static xdata char str[7];
+ 316   1      
+ 317   1        str[0] = '0';
+ 318   1        str[1] = 'x';
+ 319   1        t=i>>12;
+ 320   1        if(t<10) str[2]=(t+'0');
+ 321   1        else     str[2]=(t+'A'-10);
+ 322   1        t=(i>>8)&0x0F;
+ 323   1        if(t<10) str[3]=(t+'0');
+ 324   1        else     str[3]=(t+'A'-10);
+ 325   1        t=(i>>4)&0x0F;
+ 326   1        if(t<10) str[4]=(t+'0');
+ 327   1        else     str[4]=(t+'A'-10);
+ 328   1        t=(i>>0)&0x0F;
+ 329   1        if(t<10) str[5]=(t+'0');
+ 330   1        else     str[5]=(t+'A'-10);
+ 331   1        str[6] = '\0';
+ 332   1      
+ 333   1        return str;
+ 334   1      }
+ 335          
+ 336          /*////////////////////////////////////////////////////////////////////////////*/
+ 337          
+ 338          static STimer* _pTimers;
+ 339          static u8 _numTimers;
+ 340          
+ 341          void timer_init(STimer* pTimers, u8 numTimers)
+ 342          {
+ 343   1        u8 i;
+ 344   1      
+ 345   1        _pTimers = pTimers;
+ 346   1        _numTimers = numTimers;
+ 347   1      
+ 348   1        for(i=0; i<_numTimers; i++) // stop all the timers to prevent exception
+ 349   1        {
+ 350   2          _pTimers[i].isRuning  = 0;    // prevent timers change by <timers_tick>
+ 351   2          _pTimers[i].isTimeout = 0;    // prevent timers call by <timers_process>
+ 352   2          _pTimers[i].count      = 0;
+ 353   2          _pTimers[i].reload   = 0;
+ 354   2          _pTimers[i].callback  = 0;
+ 355   2        }
+ 356   1      }
+ 357          
+ 358          void timer_cbRegist(u8 index, void (*callback)(void))
+ 359          {
+ 360   1      /*
+ 361   1        _pTimers[index].isRuning = 0;
+ 362   1        _pTimers[index].isTimeout = 0;
+C51 COMPILER V9.59.0.0   LOLI3_LIB                                                         12/13/2023 00:12:42 PAGE 7   
+
+ 363   1        _pTimers[index].count = 0;
+ 364   1        _pTimers[index].reload = 0;
+ 365   1      */
+ 366   1        _pTimers[index].callback = callback;
+ 367   1      }
+ 368          
+ 369          void timer_startOnce(u8 index, u16 ms)
+ 370          {
+ 371   1        _pTimers[index].isRuning = 0; // stop the timer to prevent exception
+ 372   1        _pTimers[index].isTimeout = 0;
+ 373   1        _pTimers[index].count = ms;
+ 374   1        _pTimers[index].reload = 0;
+ 375   1        _pTimers[index].isRuning = 1; // start the timer
+ 376   1      }
+ 377          
+ 378          void timer_startTimes(u8 index, u16 ms, u8 times)
+ 379          {
+ 380   1        _pTimers[index].isRuning = 0; // stop the timer to prevent exception
+ 381   1        _pTimers[index].isTimeout = 0;
+ 382   1        _pTimers[index].count = _pTimers[index].reload = ms;
+ 383   1        _pTimers[index].isRuning = times; // start the timer
+ 384   1      }
+ 385          
+ 386          void timer_startCycle(u8 index, u16 ms)
+ 387          {
+ 388   1        timer_startTimes(index, ms, 0xff);
+ 389   1      }
+ 390          
+ 391          void timer_tick() // called by ISR
+ 392          {
+ 393   1        static u8 step=0;
+ 394   1        u8 i;
+ 395   1      
+ 396   1        step++;
+ 397   1        if(step < LOLI3_RECV_TIMERS_TICK_SETPS) return;
+ 398   1        step = 0;
+ 399   1      
+ 400   1        for(i=0;i<_numTimers;i++)
+ 401   1        {
+ 402   2          if(_pTimers[i].isRuning)
+ 403   2          {
+ 404   3            if(_pTimers[i].count>LOLI3_RECV_TIMERS_TICK_SETPS) _pTimers[i].count -= LOLI3_RECV_TIMERS_TICK_SETPS;
+ 405   3            else
+ 406   3            {
+ 407   4              _pTimers[i].count = _pTimers[i].reload;
+ 408   4              if(_pTimers[i].isRuning != 0xFF) _pTimers[i].isRuning--;
+ 409   4              if(_pTimers[i].reload==0) _pTimers[i].isRuning = 0;
+ 410   4              _pTimers[i].isTimeout = 1;
+ 411   4            }
+ 412   3          }
+ 413   2        }
+ 414   1      }
+ 415          
+ 416          void timer_process()
+ 417          {
+ 418   1        u8 i;
+ 419   1      
+ 420   1        for(i=0;i<_numTimers;i++)
+ 421   1        {
+ 422   2          if(_pTimers[i].isTimeout)
+ 423   2          {
+ 424   3            _pTimers[i].isTimeout = 0;
+C51 COMPILER V9.59.0.0   LOLI3_LIB                                                         12/13/2023 00:12:42 PAGE 8   
+
+ 425   3            if(_pTimers[i].callback) _pTimers[i].callback();
+ 426   3          }
+ 427   2        }
+ 428   1      
+ 429   1      }
+ 430          
+ 431          /******************************************************************************/
+ 432          /*-DO NOT ADD YOUR CODE AFTER HERE!-*\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\-WIDTH: 80-*/
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1463    ----
+   CONSTANT SIZE    =      1    ----
+   XDATA SIZE       =      7    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      5      21
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
